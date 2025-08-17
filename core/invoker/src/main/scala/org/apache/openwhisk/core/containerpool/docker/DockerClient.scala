@@ -164,13 +164,18 @@ class DockerClient(dockerHost: Option[String] = None,
     }
   }
 
-  def inspectIPAddress(id: ContainerId, network: String)(implicit transid: TransactionId): Future[ContainerAddress] =
-    runCmd(
-      Seq("inspect", "--format", s"{{.NetworkSettings.Networks.${network}.IPAddress}}", id.asString),
-      config.timeouts.inspect).flatMap {
+  def inspectIPAddress(id: ContainerId, network: String)(implicit transid: TransactionId): Future[ContainerAddress] = {
+    val cmd = if (network.startsWith("container:")) {
+      val targetContainerName = network.stripPrefix("container:")
+      Seq("inspect", "--format", "{{.NetworkSettings.IPAddress}}", targetContainerName)
+    } else {
+      Seq("inspect", "--format", s"{{.NetworkSettings.Networks.${network}.IPAddress}}", id.asString)
+    }
+    runCmd(cmd, config.timeouts.inspect).flatMap {
       case "<no value>" => Future.failed(new NoSuchElementException)
       case stdout       => Future.successful(ContainerAddress(stdout))
     }
+  }
 
   def pause(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =
     runCmd(Seq("pause", id.asString), config.timeouts.pause).map(_ => ())
