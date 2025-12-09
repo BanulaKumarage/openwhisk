@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.containerpool.docker
 
 import java.io.File
 import java.nio.file.Paths
-
 import akka.actor.ActorSystem
 import akka.stream.alpakka.file.scaladsl.FileTailSource
 import akka.stream.scaladsl.{FileIO, Source => AkkaSource}
@@ -36,7 +35,7 @@ import org.apache.openwhisk.core.containerpool.ContainerId
 import org.apache.openwhisk.core.containerpool.ContainerAddress
 
 import scala.io.Source
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 class DockerClientWithFileAccess(dockerHost: Option[String] = None,
                                  containersDirectory: File = Paths.get("containers").toFile)(
@@ -45,6 +44,36 @@ class DockerClientWithFileAccess(dockerHost: Option[String] = None,
     with DockerApiWithFileAccess {
 
   implicit private val ec = executionContext
+
+  /**
+   * Creates a checkpoint for the given container.
+   *
+   * @param id the id of the container to checkpoint
+   * @param checkpointName the name to give to the checkpoint
+   * @return a Future completing according to the command's exit-code
+   */
+  def checkpointCreate(id: ContainerId, checkpointName: String)(implicit transid: TransactionId): Future[Unit] =
+    runCmd(Seq("checkpoint", "create", id.asString, checkpointName), 10.seconds).map(_ => ())
+
+  /**
+   * Starts a container from a checkpoint.
+   *
+   * @param id the id of the container to start
+   * @param checkpointName the name of the checkpoint to restore from
+   * @return a Future completing according to the command's exit-code
+   */
+  def startWithCheckpoint(id: ContainerId, checkpointName: String)(implicit transid: TransactionId): Future[Unit] =
+    runCmd(Seq("start", "--checkpoint", checkpointName, id.asString), 10.seconds).map(_ => ())
+
+  /**
+   * Stops the container with the given id.
+   *
+   * @param id the id of the container to stop
+   * @return a Future completing according to the command's exit-code
+   */
+  def stop(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =
+    runCmd(Seq("stop", id.asString), 20.seconds).map(_ => ())
+
 
   /**
    * Provides the home directory of the specified Docker container.
@@ -156,6 +185,32 @@ class DockerClientWithFileAccess(dockerHost: Option[String] = None,
 }
 
 trait DockerApiWithFileAccess extends DockerApi {
+
+  /**
+   * Creates a checkpoint for the given container.
+   *
+   * @param id the id of the container to checkpoint
+   * @param checkpointName the name to give to the checkpoint
+   * @return a Future completing according to the command's exit-code
+   */
+  def checkpointCreate(id: ContainerId, checkpointName: String)(implicit transid: TransactionId): Future[Unit]
+
+  /**
+   * Starts a container from a checkpoint.
+   *
+   * @param id the id of the container to start
+   * @param checkpointName the name of the checkpoint to restore from
+   * @return a Future completing according to the command's exit-code
+   */
+  def startWithCheckpoint(id: ContainerId, checkpointName: String)(implicit transid: TransactionId): Future[Unit]
+
+  /**
+   * Stops the container with the given id.
+   *
+   * @param id the id of the container to stop
+   * @return a Future completing according to the command's exit-code
+   */
+  def stop(id: ContainerId)(implicit transid: TransactionId): Future[Unit]
 
   /**
    * Reads logs from the container written json-log file and returns them
