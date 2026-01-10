@@ -57,9 +57,9 @@ class CheckpointContainer(val container: DockerContainer,
       case Some(checkpoint) =>
         // Container was restored from a checkpoint
         // Stop the container and then return the checkpoint to the available pool
-        logging.info(this, s"Stopping container ${id.asString} and returning checkpoint ${checkpoint.checkpointName} to available pool for function $functionKey")
+        logging.info(this, s"Killing container ${id.asString} and returning checkpoint ${checkpoint.checkpointName} to available pool for function $functionKey")
 
-        docker.stop(id).map { _ =>
+        docker.kill(id).map { _ =>
           val checkpointToSave = checkpoint.copy(timestamp = System.currentTimeMillis())
           factory.addCheckpoint(functionKey, checkpointToSave)
           logging.info(this, s"Container stopped and checkpoint ${checkpointToSave.checkpointName} returned to available pool for function $functionKey")
@@ -77,10 +77,13 @@ class CheckpointContainer(val container: DockerContainer,
         val checkpointName = s"checkpoint_${functionKey}_${System.currentTimeMillis()}"
         logging.info(this, s"Creating new checkpoint $checkpointName for container $containerName (${id.asString})")
 
-        // Create the checkpoint and then add it
-        factory.createCheckpoint(id, containerName, checkpointName).map { checkpoint =>
+        // Create the checkpoint and then kill the container (--leave-running keeps it running after checkpoint)
+        factory.createCheckpoint(id, containerName, checkpointName).flatMap { checkpoint =>
           factory.addCheckpoint(functionKey, checkpoint)
-          logging.info(this, s"Container $containerName checkpointed and stopped as $checkpointName")
+          logging.info(this, s"Container $containerName checkpointed as $checkpointName, now killing container")
+          docker.kill(id).map { _ =>
+            logging.info(this, s"Container $containerName killed after checkpoint creation")
+          }
         }.recoverWith {
           case e =>
             logging.error(this, s"Failed to create checkpoint: ${e.getMessage}, destroying container normally")

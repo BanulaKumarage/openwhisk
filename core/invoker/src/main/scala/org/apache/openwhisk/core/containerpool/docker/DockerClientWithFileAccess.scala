@@ -53,7 +53,7 @@ class DockerClientWithFileAccess(dockerHost: Option[String] = None,
    * @return a Future completing according to the command's exit-code
    */
   def checkpointCreate(id: ContainerId, checkpointName: String)(implicit transid: TransactionId): Future[Unit] =
-    runCmd(Seq("checkpoint", "create", id.asString, checkpointName), 10.seconds).map(_ => ())
+    runCmd(Seq("checkpoint", "create", "--leave-running", id.asString, checkpointName), 10.seconds).map(_ => ())
 
   /**
    * Starts a container from a checkpoint.
@@ -73,6 +73,15 @@ class DockerClientWithFileAccess(dockerHost: Option[String] = None,
    */
   def stop(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =
     runCmd(Seq("stop", id.asString), 20.seconds).map(_ => ())
+
+  /**
+   * Kills the container with the given id.
+   *
+   * @param id the id of the container to kill
+   * @return a Future completing according to the command's exit-code
+   */
+  def kill(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =
+    runCmd(Seq("kill", id.asString), 10.seconds).map(_ => ())
 
 
   /**
@@ -211,6 +220,14 @@ trait DockerApiWithFileAccess extends DockerApi {
    * @return a Future completing according to the command's exit-code
    */
   def stop(id: ContainerId)(implicit transid: TransactionId): Future[Unit]
+
+  /**
+   * Kills the container with the given id.
+   *
+   * @param id the id of the container to kill
+   * @return a Future completing according to the command's exit-code
+   */
+  def kill(id: ContainerId)(implicit transid: TransactionId): Future[Unit]
 
   /**
    * Reads logs from the container written json-log file and returns them

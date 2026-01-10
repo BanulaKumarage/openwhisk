@@ -153,8 +153,13 @@ class CheckpointContainerFactory(
     val functionKey = getFunctionKey(actionImage)
 
     // Check if we have a checkpoint for this function
+    // Note: We skip checkpoint restoration for prewarm containers because:
+    // 1. Prewarm containers are generic (not action-specific) and would be re-initialized anyway
+    // 2. The checkpoint container name wouldn't match the expected prewarm container name
+    val isPrewarmContainer = name.contains("prewarm")
+    
     getCheckpoint(functionKey) match {
-      case Some(checkpoint) if checkpointConfig.enabled =>
+      case Some(checkpoint) if checkpointConfig.enabled && !isPrewarmContainer =>
         logging.info(this, s"Found checkpoint ${checkpoint.checkpointName} for function $functionKey, attempting restore")
 
         // Try to restore from checkpoint
@@ -173,6 +178,13 @@ class CheckpointContainerFactory(
             addCheckpoint(functionKey, checkpoint)
             createNewContainer(tid, name, actionImage, userProvidedImage, memory, cpuShares, cpuLimit)
         }
+
+      case Some(checkpoint) if isPrewarmContainer =>
+        // For prewarm containers, don't use checkpoint - just create a new container
+        // Return the checkpoint to the pool so it can be used for non-prewarm requests
+        logging.info(this, s"Skipping checkpoint ${checkpoint.checkpointName} for prewarm container $name, returning checkpoint to pool")
+        addCheckpoint(functionKey, checkpoint)
+        createNewContainer(tid, name, actionImage, userProvidedImage, memory, cpuShares, cpuLimit)
 
       case _ =>
         // No checkpoint available, create a new container
